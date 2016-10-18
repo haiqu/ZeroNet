@@ -8,7 +8,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   #Set box
   config.vm.box = "ubuntu/trusty64"
 
-  #Do not check fo updates
+  #Do not check for updates
   config.vm.box_check_update = false
 
   #Add private network
