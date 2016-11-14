@@ -10,10 +10,12 @@ try:
 except:
     import StringIO
 
+import gevent
 
 from Config import config
 from Plugin import PluginManager
 from Debug import Debug
+from util import helper
 
 plugin_dir = "plugins/Sidebar"
 media_dir = plugin_dir + "/media"
@@ -200,25 +202,8 @@ class UiWebsocketPlugin(object):
 
         body.append("</ul></li>")
 
-    def getFreeSpace(self):
-        free_space = 0
-        if "statvfs" in dir(os):  # Unix
-            statvfs = os.statvfs(config.data_dir)
-            free_space = statvfs.f_frsize * statvfs.f_bavail
-        else:  # Windows
-            try:
-                import ctypes
-                free_space_pointer = ctypes.c_ulonglong(0)
-                ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-                    ctypes.c_wchar_p(config.data_dir), None, None, ctypes.pointer(free_space_pointer)
-                )
-                free_space = free_space_pointer.value
-            except Exception, err:
-                self.log.debug("GetFreeSpace error: %s" % err)
-        return free_space
-
     def sidebarRenderSizeLimit(self, body, site):
-        free_space = self.getFreeSpace() / 1024 / 1024
+        free_space = helper.getFreeSpace() / 1024 / 1024
         size = float(site.settings["size"]) / 1024 / 1024
         size_limit = site.getSizeLimit()
         percent_used = size / size_limit
@@ -231,16 +216,8 @@ class UiWebsocketPlugin(object):
         """.format(**locals()))
 
     def sidebarRenderOptionalFileStats(self, body, site):
-        size_total = 0.0
-        size_downloaded = 0.0
-        res = site.content_manager.contents.execute("SELECT inner_path FROM content WHERE size_files_optional > 0 AND site_id = :site_id")
-        for row in res:
-            inner_path = row["inner_path"]
-            content = site.content_manager.contents[inner_path]
-            for file_name, file_details in content["files_optional"].items():
-                size_total += file_details["size"]
-                if site.content_manager.hashfield.hasHash(file_details["sha512"]):
-                    size_downloaded += file_details["size"]
+        size_total = float(site.settings["size_optional"])
+        size_downloaded = float(site.settings["optional_downloaded"])
 
         if not size_total:
             return False
@@ -595,7 +572,8 @@ class UiWebsocketPlugin(object):
         if "ADMIN" not in permissions:
             return self.response(to, "You don't have permission to run this command")
         self.site.settings["autodownloadoptional"] = bool(owned)
-        self.site.update(check_files=True)
+        self.site.bad_files = {}
+        gevent.spawn(self.site.update, check_files=True)
         self.site.worker_manager.removeGoodFileTasks()
 
     def actionDbReload(self, to):

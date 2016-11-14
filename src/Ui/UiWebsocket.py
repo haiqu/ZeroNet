@@ -103,6 +103,12 @@ class UiWebsocket(object):
                     self.log.error("WebSocket handleRequest error: %s" % Debug.formatException(err))
                     self.cmd("error", "Internal error: %s" % Debug.formatException(err, "html"))
 
+    def hasSitePermission(self, address):
+        if address != self.site.address and "ADMIN" not in self.site.settings["permissions"]:
+            return False
+        else:
+            return True
+
     # Event in a channel
     def event(self, channel, *params):
         if channel in self.channels:  # We are joined to channel
@@ -709,37 +715,8 @@ class UiWebsocket(object):
 
     def actionConfigSet(self, to, key, value):
         if key not in ["tor"]:
-            self.response(to, "denied")
+            self.response(to, {"error": "Forbidden"})
             return
 
-        if not os.path.isfile(config.config_file):
-            content = ""
-        else:
-            content = open(config.config_file).read()
-        lines = content.splitlines()
-
-        global_line_i = None
-        key_line_i = None
-        i = 0
-        for line in lines:
-            if line.strip() == "[global]":
-                global_line_i = i
-            if line.startswith(key + " = "):
-                key_line_i = i
-            i += 1
-
-        if value is None:  # Delete line
-            if key_line_i:
-                del lines[key_line_i]
-        else:  # Add / update
-            new_line = "%s = %s" % (key, value.replace("\n", "").replace("\r", ""))
-            if key_line_i:  # Already in the config, change the line
-                lines[key_line_i] = new_line
-            elif global_line_i is None:  # No global section yet, append to end of file
-                lines.append("[global]")
-                lines.append(new_line)
-            else:  # Has global section, append the line after it
-                lines.insert(global_line_i + 1, new_line)
-
-        open(config.config_file, "w").write("\n".join(lines))
+        config.saveValue(key, value)
         self.response(to, "ok")
